@@ -1,0 +1,309 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{ismir} % sem "submission": mostra o autor e remove a numeração de linhas
+\usepackage{amsmath,amssymb,cite,url}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{booktabs}
+\usepackage{tikz}
+
+\newcommand{\repourl}{\url{https://github.com/guilhermenovais/boombap-generation}}
+
+\newcommand{\nt}[1]{\textit{#1}}
+\newcommand{\tm}[1]{\texttt{#1}}
+
+\title{Geração de Batidas Boom Bap com uma Gramática Probabilística Livre de Contexto}
+
+\oneauthor
+  {Guilherme Novais de Souza}
+  {Departamento de Ciência da Computação, Universidade Federal de Minas Gerais}
+
+\def\authorname{G. N. de Souza}
+
+\makeatletter
+\renewcommand{\permission}{%
+  \begin{figure}[b]{%
+    \footnotesize
+    \begin{spacing}{1.1}
+      \copyright\ \authorname. Trabalho prático~1 de DCC831 -- Inteligência Artificial na Música,
+      DCC/UFMG, 2026. Relatório no formato ISMIR.
+    \end{spacing}
+    }
+  \end{figure}
+}
+% Rótulos que o ismir.sty fixa em inglês
+\def\abstract{\begin{center}\bf RESUMO\end{center}}
+\def\fnum@figure{\textbf{Figura \thefigure}}
+\def\fnum@table{\textbf{Tabela \thetable}}
+\def\thebibliography#1{%
+  \section{Referências}\list
+  {[\arabic{enumi}]}{%
+  \settowidth\labelwidth{[#1]}\leftmargin 1em
+  \advance\leftmargin\labelsep
+  \usecounter{enumi}%
+  }%
+  \def\newblock{\hskip .01em plus .01em minus .01em}%
+  \sloppy\clubpenalty4000\widowpenalty4000
+  \sfcode`\.=1000\relax
+}
+\makeatother
+
+\sloppy
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este trabalho apresenta um gerador de músicas de bateria no estilo boom bap, o hip-hop dos anos 1990,
+baseado apenas na expansão de uma gramática probabilística livre de contexto (PCFG). A gramática tem
+uma parte estrutural indexada, que deriva a forma intro--verso--refrão--verso--outro em blocos de 4 ou
+8~compassos com exatamente o número de compassos pedido, e uma tabela de regras de estilo que define
+grooves, viradas, chimbal, ghost notes, humanização e uma linha de baixo opcional em tonalidade menor.
+Os terminais viram eventos General MIDI com swing de MPC, entre 85 e 95~bpm. Cada decisão da derivação
+vem de um hash da semente e do caminho do nó na árvore, de modo que a mesma semente gera arquivos
+idênticos byte a byte e o efeito dos hiperparâmetros é monotônico. Em 100 sementes com hiperparâmetros
+sorteados, nenhuma música violou as restrições de estilo.
+\end{abstract}
+
+\section{Introdução}\label{sec:intro}
+
+Gramáticas formais são uma representação natural para músicas com forma hierárquica e
+convencionada~\cite{Roads79,Lerdahl83}. Uma batida de hip-hop pode ser descrita como uma árvore: a
+música se divide em seções, as seções em blocos de 4 ou 8 compassos, e os compassos em eventos de
+percussão posicionados numa grade. Cada nível tem poucas opções válidas, e a escolha em um nível não
+depende dos detalhes internos dos outros, que é justamente o que uma gramática livre de contexto
+expressa. Com probabilidades nas regras, a mesma gramática passa a gerar variações em vez de uma única
+sequência.
+
+O boom bap é um bom caso de teste para essa abordagem. O groove é bem padronizado (bumbo no primeiro
+tempo, caixa nos tempos 2 e 4, chimbal em colcheias, swing de MPC e andamento lento), mas tem variação
+dentro do padrão: bumbos sincopados, ghost notes na caixa, chimbal em semicolcheias e viradas no fim dos
+blocos. Este trabalho descreve o \tm{boombap}, um programa que gera músicas completas nesse estilo, em
+MIDI, só pela expansão de uma PCFG. A contribuição é uma gramática em que (i)~a forma e a duração são
+garantidas por construção, (ii)~as restrições de estilo são verificadas sobre a tabela de regras antes
+de qualquer geração e (iii)~a amostragem é reprodutível e monotônica nos hiperparâmetros.
+
+\section{Trabalhos Relacionados}\label{sec:related}
+
+Roads e Wieneke~\cite{Roads79} fazem um panorama do uso de gramáticas como representação musical e discutem a
+adequação de cada classe da hierarquia de Chomsky. A teoria de Lerdahl e Jackendoff~\cite{Lerdahl83}
+descreve a música tonal por estruturas hierárquicas; embora analítica, ela sustenta a forma como árvore
+usada aqui. Steedman~\cite{Steedman84} propôs regras de
+reescrita que geram as progressões do blues de 12 compassos a partir de uma sequência básica. O trabalho
+mais próximo deste é o Bol Processor de Kippen e Bel~\cite{Kippen92}, em que gramáticas formais
+representam sequências de toques de tabla e são avaliadas junto a um músico especialista: como aqui,
+os terminais são eventos percussivos e a gramática codifica um estilo específico. Keller e
+Morrison~\cite{Keller07} usam uma gramática probabilística para improvisar jazz no Impro-Visor; seus
+terminais são categorias abstratas de nota que só depois viram alturas concretas, separação parecida
+com a nossa entre derivação e realização. Quick e Hudak~\cite{Quick13} propõem gramáticas temporais
+probabilísticas, em que as regras dividem durações entre os filhos; aqui obtemos a mesma conservação
+de duração com índices inteiros. O levantamento de Fernández e Vico~\cite{Fernandez13} situa as
+gramáticas entre os métodos de composição algorítmica.
+
+\section{Método}\label{sec:method}
+
+\subsection{Restrição de Estilo e Representação}
+
+O estilo alvo é o boom bap dos anos 1990: compasso 4/4, 85--95~bpm, swing de MPC, forma
+intro~$\to$ verso~$\to$ refrão~$\to$ verso~$\to$ outro, com cada seção composta de blocos de 4 ou 8
+compassos. Cada compasso é uma grade de 16 semicolcheias (posições 0--15, com 120 ticks cada e
+480 ticks por semínima). Um terminal de bateria tem a forma \tm{peça@posição:velocity}, por exemplo
+\tm{kick@0:118}, e é mapeado para o canal 10 do General MIDI: bumbo 36, aro 37, caixa 38, chimbal
+fechado 42, chimbal aberto 46 e prato 49. Os outros terminais são marcadores: \tm{grid8}/\tm{grid16}
+dá a grade do chimbal no compasso (e quais posições recebem swing), \tm{dv$\pm$k} e \tm{dt$\pm$k} são
+desvios de velocity e de tempo, \tm{$\langle$seção:X$\rangle$} marca uma seção, e \tm{deg1}, \tm{deg3},
+\tm{deg4}, \tm{deg5}, \tm{deg7} são graus da escala menor natural. O baixo toca uma nota a cada ataque de bumbo, no grau sorteado, até o próximo bumbo e
+por no máximo uma semínima, com a tônica da tonalidade escolhida na oitava 2 (Lá menor: A2~=~45).
+
+\subsection{A Gramática}
+
+A gramática é $G=(N,\Sigma,R,S)$ com uma função $P:R\to[0,1]$ tal que
+$\sum_{\alpha} P(A\to\alpha)=1$ para todo $A\in N$. O axioma é $S=\nt{Música}(n)$, em que $n$ é o
+número de compassos pedido (\tm{--bars}); $\Sigma$ contém os terminais descritos acima e $N$ os
+não-terminais das duas partes a seguir. Para $n=40$, a listagem do programa tem 193 não-terminais,
+100 terminais e 386 regras. Destes, 121 têm duas ou mais produções com $0<P<1$, de modo que a gramática é
+não-determinística: o mesmo axioma gera músicas diferentes.
+
+\begin{figure*}[t]
+\footnotesize
+\centering
+\begin{tabular}{@{}l@{\;}c@{\;}l@{\quad}l@{}}
+\toprule
+\nt{Música}$(n)$ & $\to$ & \nt{Forma}$(n)$ & $[1]$ \\
+\nt{Forma}$(n)$ & $\to$ & \nt{Intro}$(i)$ \nt{Corpo}$(n{-}i{-}o)$ \nt{Outro}$(o)$ & $[\propto P_I(i)\,P_O(o)]$ \\
+\nt{Corpo}$(m)$ & $\to$ & \nt{Verso}$(a)$ \nt{Refrão}$(b)$ \nt{Verso}$(c)$ & $[\propto w(a,b,c)]$ \\
+\nt{Verso}$(k)$ & $\to$ & \tm{$\langle$seção:verso$\rangle$} \nt{Seção}$(k,g,\textrm{início\_seção})$ & $[P_G(g)]$ \\
+\nt{Seção}$(k,g,s)$ & $\to$ & \nt{Bloco4}$(g,s)$ \nt{FimBloco}$(k{-}4,g)$ & $[0{,}4]$ \\
+ & $\mid$ & \nt{Bloco8}$(g,s)$ \nt{FimBloco}$(k{-}8,g)$ & $[0{,}6]$ \\
+\nt{Bloco4}$(g,s)$ & $\to$ & \nt{Compasso}$(g,\textrm{primeiro},s)$ \nt{Compasso}$(g,\textrm{meio},\textrm{normal})^{2}$ & $[1]$ \\
+\nt{FimBloco}$(k,g)$ & $\to$ & \nt{Compasso}$(g,\textrm{fim},\textrm{virada})$ \nt{Seção}$(k,g,\textrm{pós\_virada})$ & $[\textrm{@fill\_end}=0{,}30+0{,}70f]$ \\
+ & $\mid$ & \nt{Compasso}$(g,\textrm{fim},\textrm{groove})$ \nt{Seção}$(k,g,\textrm{normal})$ & [resto] \\
+\nt{Compasso}$(g,\cdot,s)$ & $\to$ & \nt{Prato}$(s)$ \nt{Fill\_}$g$ $\mid$ \nt{Prato}$(s)$ \nt{Groove\_}$g$ & $[\textrm{@fill\_mid}=0{,}05+0{,}25f \mid \textrm{resto}]$ \\
+\nt{Prato}$(s)$ & $\to$ & \tm{crash@0:110} $\mid$ $\varepsilon$ & $[p_s \mid \textrm{resto}]$ \\
+\midrule
+\nt{Groove\_Classic} & $\to$ & \tm{kick@0:118 snare@4:115 kick@10:104 snare@12:117} & \\
+ & & \nt{OptKicks\_Classic} \nt{Ghosts\_Classic} \nt{Hats\_Classic} & $[1]$ \\
+\nt{OptKick7\_Classic} & $\to$ & \tm{kick@7:88} $\mid$ $\varepsilon$ & $[0{,}20+0{,}55d \mid \textrm{resto}]$ \\
+\nt{Hats\_Classic} & $\to$ & \nt{Hats16} $\mid$ \nt{Hats8\_Classic} & $[0{,}10+0{,}50d \mid \textrm{resto}]$ \\
+\nt{FillTail\_Classic} & $\to$ & \nt{TailRoll}${}^\ast$ $\mid$ \nt{TailKickSnare} $\mid$ \nt{TailStutter} $\mid$ \nt{TailOpenLift} & $[0{,}35 \mid 0{,}30 \mid 0{,}20 \mid \textrm{resto}]$ \\
+\nt{HumT} & $\to$ & \tm{dt+0} $\mid$ \tm{dt+3} $\mid$ \tm{dt+6} $\mid$ \tm{dt-3} $\mid$ \tm{dt+10} $\mid$ \tm{dt-6} & $[0{,}30 \mid 0{,}20 \mid 0{,}15 \mid 0{,}15 \mid 0{,}10 \mid \textrm{resto}]$ \\
+\nt{BassFirst} & $\to$ & \tm{deg1} $\mid$ \tm{deg5} $\mid$ \tm{deg4} & $[0{,}80 \mid 0{,}12 \mid \textrm{resto}]$ \\
+\bottomrule
+\end{tabular}
+\caption{Acima, as famílias estruturais indexadas; abaixo, algumas regras da tabela de estilo
+\tm{boombap.rules}. $d$ e $f$ são \tm{density} e \tm{fills}. Em \nt{Forma}, $i,o\in\{4,8\}$; em
+\nt{Corpo}, $a,b,c$ são múltiplos de 4 com $a{+}b{+}c=m$ e
+$w=\exp(-\lVert (a,b,c)/m-(0{,}3;\,0{,}4;\,0{,}3)\rVert^2/2\sigma^2)$, $\sigma=0{,}08$;
+$g\in\{$Classic, Lazy, Bounce$\}$ com $P_G=(0{,}45;\,0{,}25;\,0{,}30)$. \nt{Intro} e \nt{Outro} são
+análogas a \nt{Verso}; \nt{Bloco8} tem 6 compassos do meio; com $k=4$, \nt{Seção} só usa \nt{Bloco4}, e $\nt{Seção}(0,g,s)\to\varepsilon$.
+O prato toca com $p_s=0{,}60$, $0{,}85$ e $0{,}45$ no início da intro, de uma seção e após uma virada,
+e nunca no último compasso do bloco. ${}^\ast$\nt{TailRoll} $\to$ \tm{snare@12:100 snare@13:84 snare@14:96 snare@15:112}.}
+\label{fig:grammar}
+\end{figure*}
+
+\textbf{Parte estrutural.} As famílias da Figura~\ref{fig:grammar} (acima) são geradas pelo código,
+mas todos os seus pesos vêm de parâmetros da tabela de regras. Os índices são o número de compassos
+$k$, o groove $g$ e um estado $s$. Toda regra conserva a soma dos índices de duração do lado direito,
+logo qualquer derivação de $\nt{Música}(n)$ tem exatamente $n$ compassos: a duração é garantida por
+construção, sem amostragem por rejeição. O groove é sorteado uma vez por seção. O estado
+$s\in\{\textrm{início\_intro},\textrm{início\_seção},\textrm{pós\_virada},\textrm{normal}\}$ registra
+o que precede o compasso e permite, por exemplo, um prato depois de uma virada. Como os índices tomam
+valores num conjunto finito para cada $n$, instanciá-los produz um conjunto finito de não-terminais
+comuns, e a gramática continua livre de contexto.
+
+\textbf{Parte de estilo.} A tabela \tm{boombap.rules} define três grooves (Classic, Lazy e Bounce),
+cada um com bumbos e caixas fixos, bumbos e ghost notes opcionais e um padrão de chimbal; as viradas
+\nt{Fill\_}$g$, que mantêm o início do compasso e trocam o final por uma de cinco ``caudas'' (rufo,
+bumbo--caixa, aro em crescendo etc.); e os não-terminais de humanização e de baixo. Após cada terminal
+de bateria $x$, o motor expande \nt{HumV} e \nt{HumT}, o que equivale a uma regra
+$X\to x\;\nt{HumV}\;\nt{HumT}$; com o baixo ligado, cada bumbo também expande \nt{BassFirst} (se está
+na posição 0) ou \nt{BassDeg} (graus 1, 5, 3, 4, 7 com probabilidades 0,35; 0,20; 0,15; 0,15; 0,15).
+
+\textbf{Restrições validadas.} Antes de cada geração, a tabela é verificada em toda a grade de valores
+de \tm{density} e \tm{fills}: as probabilidades de cada não-terminal somam 1; toda derivação de um
+groove contém bumbo na posição 0, caixa nas posições 4 e 12 e um bumbo sincopado; toda virada mantém
+bumbo no 0 e caixa no 4; todo compasso tem chimbal e exatamente um marcador de grade; vale
+\tm{@fill\_end}~$>$~\tm{@fill\_mid}; e todo não-terminal deriva uma cadeia finita de terminais (sem
+recursão infinita). Uma tabela que viola qualquer item é recusada.
+
+\subsection{Realização: dos Terminais ao MIDI}
+
+Um evento na posição $p$ do compasso $c$ toca no tick $1920c+120p+\delta(p)+\textit{dt}$, limitado ao
+compasso. O swing segue a convenção da MPC: com swing $w$\%, a primeira nota de cada par dura $w$\% do
+par. Na grade de colcheias, as posições 2, 6, 10 e 14 atrasam $\delta=(w/100-1/2)\cdot 480$ ticks; na
+grade de semicolcheias, as posições ímpares atrasam $(w/100-1/2)\cdot 240$. Assim, $w=50$ é reto,
+$w\approx 67$ é ternário, e o padrão $w=58$ dá 38 ticks ($\approx$53~ms a 90~bpm) nas colcheias, ou
+razão de swing $w/(100-w)\approx1{,}4$, grandeza que no jazz varia com o andamento~\cite{Friberg02}.
+A velocity final é a do terminal mais \tm{dv}, limitada a [1, 127], e \tm{dt} vai de $-6$ a $+10$
+ticks, com viés para o atraso, típico do estilo. O MIDI guarda o andamento, marcadores de seção e um
+evento de texto com a semente e os hiperparâmetros; a derivação completa vai para um \tm{.json}.
+
+\textbf{Hiperparâmetros.} A Tabela~\ref{tab:hyper} os resume. \tm{density} e \tm{fills} entram como expressões
+nas probabilidades da tabela, como $0{,}20+0{,}55\,d$ em \nt{OptKick7\_Classic}. Todas essas expressões
+são não-decrescentes no parâmetro, e a alternativa ``presente'' é sempre listada primeiro.
+
+\begin{table}[t]
+\footnotesize
+\centering
+\begin{tabular}{@{}llp{3.55cm}@{}}
+\toprule
+Parâmetro & Faixa (padrão) & Efeito \\
+\midrule
+\tm{density} & 0--1 (0,5) & notas opcionais, chimbal em semicolcheias \\
+\tm{fills} & 0--1 (0,5) & frequência de viradas \\
+\tm{swing} & 52--75\% (58) & atraso das posições fracas \\
+\tm{bpm} & 85--95 (90) & andamento \\
+\tm{bars} & 20--256 (40) & compassos (múltiplo de 4) \\
+\tm{bass}, \tm{key} & não; tom menor (Am) & liga \nt{BassFirst}/\nt{BassDeg} \\
+\tm{seed} & $[0,2^{63})$ (sorteada) & todas as decisões \\
+\bottomrule
+\end{tabular}
+\caption{Hiperparâmetros do gerador.}
+\label{tab:hyper}
+\end{table}
+
+\subsection{Reprodutibilidade}
+
+Cada nó da árvore recebe um número $u\in[0,1)$ formado pelos primeiros 64 bits de
+$\textrm{sha256}(\textit{semente}\,|\,\textit{caminho})$, em que o caminho é a sequência de índices de
+filho desde a raiz, e a regra é escolhida pela CDF inversa na ordem da tabela. Assim, a mesma semente com os mesmos parâmetros gera a mesma árvore e, portanto, arquivos
+idênticos. Mudar um parâmetro não muda o $u$ de nenhum nó, só as decisões cujas probabilidades
+dependem dele. E, como a alternativa presente vem primeiro, se $u<p(d_1)$ então $u<p(d_2)$ para
+$d_1\le d_2$: toda nota opcional presente com \tm{density} baixa continua presente com \tm{density}
+alta. Os nós de humanização e de baixo usam sufixos próprios no caminho, então ligar o baixo não altera
+a bateria.
+
+\section{Resultados}\label{sec:results}
+
+Geramos quatro amostras (Tabela~\ref{tab:results}), cada uma com \tm{.mid}, \tm{.json} e um \tm{.wav}
+sintetizado com o FluidSynth e o soundfont FluidR3\_GM: \tm{seed7\_default} (padrões),
+\tm{seed7\_busy} (mesma semente, $d=f=1$), \tm{seed21\_bass\_dm} (outra semente, swing 70 e baixo em
+Ré menor) e \tm{seed99\_long} (86~bpm, 64 compassos, $d=0{,}2$, $f=0{,}3$). Os arquivos estão em
+\tm{samples/} no repositório do projeto\footnote{\repourl}, e o script \tm{samples/make\_samples.sh}
+as regenera.
+
+\begin{table}[t]
+\footnotesize
+\centering
+\setlength{\tabcolsep}{3.4pt}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Amostra & bumbo & caixa & aro & chimbal & viradas & atraso \\
+\midrule
+\tm{seed7\_default} & 2,52 & 2,48 & 0,55 & 8,55 & 10/40 & 33,1 \\
+\tm{seed7\_busy} & 2,77 & 2,75 & 0,75 & 8,85 & 17/40 & 31,1 \\
+\tm{seed21\_bass\_dm} & 2,42 & 2,88 & 0,28 & 9,55 & 10/40 & 74,6 \\
+\tm{seed99\_long} & 2,50 & 2,56 & 0,14 & 8,86 & 13/64 & 33,6 \\
+\midrule
+seed 7, $d=0$ & 2,35 & 2,33 & 0,28 & 7,30 & 10/40 & 37,8 \\
+seed 7, $d=1$ & 2,83 & 2,52 & 0,85 & 9,43 & 10/40 & 30,3 \\
+\bottomrule
+\end{tabular}
+\caption{Saída de \tm{boombap analyze}: notas por compasso (chimbal fechado), compassos com virada e
+atraso médio das posições fracas, em ticks (120 = uma semicolcheia).}
+\label{tab:results}
+\end{table}
+
+Entre \tm{seed7\_default} e \tm{seed7\_busy} a forma é a mesma (4--12--12--8--4), porque nenhuma regra
+estrutural depende de \tm{density}. As viradas passam de 10 para 17 compassos e os bumbos, caixas e
+aros aumentam; o chimbal quase não muda porque os compassos de virada têm menos chimbal. Para isolar
+\tm{density}, as duas últimas linhas variam só esse parâmetro: o número de viradas fica igual, e
+bumbo, aro e chimbal crescem (Figura~\ref{fig:pianoroll}). O atraso médio cai com \tm{density} porque
+mais compassos usam a grade de semicolcheias, em que o atraso é a metade. Com swing 70,
+\tm{seed21\_bass\_dm} tem mais que o dobro do atraso das demais.
+
+\begin{figure}[t]
+\centering
+\input{fig_pianoroll.tex}
+\caption{Compassos 13--16 da semente 7 com $d=0$ (acima) e $d=1$ (abaixo); o compasso 16, em cinza, é
+uma virada. Mais escuro significa velocity maior. Todos os bumbos, caixas e aros de $d=0$ aparecem em
+$d=1$, que acrescenta notas opcionais e troca o chimbal de colcheias por semicolcheias.}
+\label{fig:pianoroll}
+\end{figure}
+
+\textbf{Validação.} A bateria de testes gera 100 sementes com hiperparâmetros sorteados (de 20 a
+96 compassos, baixo em 30\% dos casos) e analisa cada MIDI: nenhuma violou as restrições (andamento,
+4/4, ordem das seções, bumbo no 0, caixa no 4 e no 12 fora das viradas, chimbal e swing em todo
+compasso), e as seções somam o número de compassos pedido. Regenerar a partir dos parâmetros gravados no arquivo reproduz o MIDI e o \tm{.json}
+byte a byte, e uma música de 256 compassos leva 0,34~s. A monotonicidade em \tm{density} vale nas 10
+sementes testadas. Uma meta que fixamos de antemão, de que \tm{density} 0$\to$1 multiplique bumbo+chimbal
+por pelo menos 1,3, não foi atingida em 3 dessas 10 sementes (1,27 a 1,29), o que indica que os
+coeficientes de \tm{density} na tabela poderiam ser maiores.
+
+\section{Discussão e Trabalhos Futuros}\label{sec:discussion}
+
+O sistema gera só bateria e baixo, sem melodia, harmonia ou samples, que são centrais no boom bap. As
+probabilidades foram escritas à mão, não aprendidas de dados. Por ser livre de contexto, a gramática
+não modela a repetição de motivos ao longo da música: dois versos com o mesmo groove compartilham o
+padrão base, mas não as escolhas opcionais. Também não houve teste com ouvintes. Como trabalhos
+futuros, as probabilidades poderiam ser estimadas a partir de um corpus como o Groove MIDI
+Dataset~\cite{Gillick19}; gramáticas de atributos ou sensíveis ao contexto permitiriam repetir e
+variar motivos; uma camada harmônica daria ao baixo uma progressão de acordes; e um teste de escuta
+compararia as músicas geradas com batidas reais.
+
+\bibliography{refs}
+
+\end{document}

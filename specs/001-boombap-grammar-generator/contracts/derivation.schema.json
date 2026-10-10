@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "boombap/derivation.schema.json",
+  "title": "Derivação boombap (arquivo <base>.json ao lado do MIDI)",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "seed",
+    "rules_sha256",
+    "config",
+    "form",
+    "log_prob",
+    "tree"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "boombap-derivation"
+    },
+    "version": {
+      "type": "string",
+      "description": "versão do pacote/gramática"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9223372036854775807
+    },
+    "rules_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 da tabela de regras usada (boombap.rules)"
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "bpm",
+        "swing",
+        "density",
+        "fills",
+        "bars",
+        "bass",
+        "key"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bpm": {
+          "type": "integer",
+          "minimum": 85,
+          "maximum": 95
+        },
+        "swing": {
+          "type": "number",
+          "minimum": 52,
+          "maximum": 75
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fills": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "bars": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 256,
+          "multipleOf": 4
+        },
+        "bass": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-G][#b]?m$"
+        }
+      }
+    },
+    "form": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "description": "resumo das seções, na ordem intro, verso, refrão, verso, outro",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "start_bar",
+          "bars",
+          "groove",
+          "blocks"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": [
+              "intro",
+              "verso",
+              "refrão",
+              "outro"
+            ]
+          },
+          "start_bar": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bars": {
+            "type": "integer",
+            "minimum": 4,
+            "multipleOf": 4
+          },
+          "groove": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "size",
+                "bars"
+              ],
+              "properties": {
+                "size": {
+                  "enum": [
+                    4,
+                    8
+                  ]
+                },
+                "bars": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "index",
+                      "kind",
+                      "hat_grid"
+                    ],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "kind": {
+                        "enum": [
+                          "groove",
+                          "fill"
+                        ]
+                      },
+                      "hat_grid": {
+                        "enum": [
+                          8,
+                          16
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "log_prob": {
+      "type": "number",
+      "maximum": 0,
+      "description": "soma de ln(prob) das regras aplicadas"
+    },
+    "tree": {
+      "$ref": "#/$defs/node"
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": [
+        "symbol",
+        "rule",
+        "prob",
+        "u",
+        "children"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "description": "não-terminal com índices, ex.: Seção(12,G2,início)"
+        },
+        "rule": {
+          "type": "string",
+          "description": "id da regra escolhida"
+        },
+        "prob": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "u": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/node"
+              },
+              {
+                "$ref": "#/$defs/terminal"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "required": [
+        "t"
+      ],
+      "properties": {
+        "t": {
+          "type": "string",
+          "description": "texto do terminal, ex.: kick@6, Δv+3, Δt-2, grade16, ⟨seção:verso⟩"
+        }
+      }
+    }
+  }
+}

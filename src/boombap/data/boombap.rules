@@ -1,0 +1,228 @@
+# =====================================================================
+#  boombap.rules  -  Probabilistic grammar for boom bap drums
+#  Author: Guilherme Novais de Souza
+#
+#  Grid: 16 steps per bar (0-15), 120 ticks = one 16th note.
+#  Variables: density (0-1) controls extra kicks, ghost notes, 16th hats
+#             and open hats; fills (0-1) controls how often fills appear.
+#  All probabilities that depend on a variable are non-decreasing in it,
+#  and the "present"/"fill" alternative is always listed first.
+# =====================================================================
+
+
+# ---------------------------------------------------------------------
+#  Parameters
+# ---------------------------------------------------------------------
+
+@grooves = Classic Lazy Bounce
+
+# Fill probability. fill_end - fill_mid = 0.25 + 0.45*fills > 0 on [0,1].
+@fill_end = 0.30 + 0.70*fills
+@fill_mid = 0.05 + 0.25*fills
+
+# Crashes
+@crash_section    = 0.85
+@crash_intro      = 0.60
+@crash_after_fill = 0.45
+
+# Form
+@intro_bars  = 4:0.7 8:0.3
+@outro_bars  = 4:0.6 8:0.4
+@body_share  = 0.30 0.40 0.30      # verse / chorus / verse
+@body_sigma  = 0.08
+@block_size  = 4:0.4 8:0.6
+@groove_weights = Classic:0.45 Lazy:0.25 Bounce:0.30
+
+
+# =====================================================================
+#  GROOVE 1: Classic  - "boom . . bap . . boom bap"
+#  Kicks: 0, 10 mandatory; 7 and 3 optional.
+#  Ghosts: snare ghosts on 7 and 15.
+# =====================================================================
+
+Groove_Classic -> kick@0:118 snare@4:115 kick@10:104 snare@12:117 OptKicks_Classic Ghosts_Classic Hats_Classic
+
+OptKicks_Classic -> OptKick7_Classic OptKick3_Classic
+
+OptKick7_Classic -> kick@7:88 [0.20+0.55*density]
+                  | ε [rest]
+
+OptKick3_Classic -> kick@3:72 [0.05+0.35*density]
+                  | ε [rest]
+
+Ghosts_Classic -> Ghost7_Classic Ghost15_Classic
+
+Ghost7_Classic -> snare@7:32 [0.15+0.50*density]
+                | ε [rest]
+
+Ghost15_Classic -> snare@15:38 [0.10+0.45*density]
+                 | ε [rest]
+
+Hats_Classic -> Hats16 [0.10+0.50*density]
+              | Hats8_Classic [rest]
+
+# 8th hats; the last offbeat may open up
+Hats8_Classic -> grid8 hhc@0:96 hhc@2:70 hhc@4:94 hhc@6:70 hhc@8:96 hhc@10:70 hhc@12:94 HatEnd_Classic
+
+HatEnd_Classic -> hho@14:80 [0.15+0.35*density]
+                | hhc@14:72 [rest]
+
+# Fill: keeps kick@0, snare@4, kick@10; bar end replaced by a tail
+Fill_Classic -> kick@0:118 snare@4:115 kick@10:104 FillHats_Classic FillTail_Classic
+
+FillHats_Classic -> FillHats16 [0.10+0.50*density]
+                  | FillHats8 [rest]
+
+FillTail_Classic -> TailRoll       [0.35]
+                  | TailKickSnare  [0.30]
+                  | TailStutter    [0.20]
+                  | TailOpenLift   [rest]
+
+
+# =====================================================================
+#  GROOVE 2: Lazy  - sparse, laid-back, rimshot ghosts, open hat on 14
+#  Kicks: 0, 11 mandatory; 8 optional.
+#  Ghosts: rim ghosts on 6 and 13.
+# =====================================================================
+
+Groove_Lazy -> kick@0:112 snare@4:110 kick@11:96 snare@12:112 OptKick8_Lazy Ghosts_Lazy Hats_Lazy
+
+OptKick8_Lazy -> kick@8:80 [0.10+0.50*density]
+               | ε [rest]
+
+Ghosts_Lazy -> Ghost6_Lazy Ghost13_Lazy
+
+Ghost6_Lazy -> rim@6:45 [0.25+0.45*density]
+             | ε [rest]
+
+Ghost13_Lazy -> rim@13:40 [0.10+0.40*density]
+              | ε [rest]
+
+Hats_Lazy -> Hats16 [0.05+0.25*density]
+           | Hats8_Lazy [rest]
+
+# 8th hats, softer, always open on 14
+Hats8_Lazy -> grid8 hhc@0:88 hhc@2:62 hhc@4:86 hhc@6:62 hhc@8:88 hhc@10:62 hhc@12:86 hho@14:76
+
+# Fill: keeps kick@0, snare@4, kick@8 (lazy push), tail on 12-15
+Fill_Lazy -> kick@0:112 snare@4:110 kick@8:85 FillHats_Lazy FillTail_Lazy
+
+FillHats_Lazy -> FillHats16 [0.05+0.25*density]
+               | FillHats8 [rest]
+
+FillTail_Lazy -> TailRimBuild  [0.35]
+               | TailOpenLift  [0.30]
+               | TailStutter   [0.20]
+               | TailRoll      [rest]
+
+
+# =====================================================================
+#  GROOVE 3: Bounce  - busier kick pattern, "boom-boom bap"
+#  Kicks: 0, 3, 10 mandatory; 6 and 15 optional.
+#  Ghosts: snare ghosts on 7 and 9.
+# =====================================================================
+
+Groove_Bounce -> kick@0:120 kick@3:96 snare@4:118 kick@10:106 snare@12:120 OptKicks_Bounce Ghosts_Bounce Hats_Bounce
+
+OptKicks_Bounce -> OptKick6_Bounce OptKick15_Bounce
+
+OptKick6_Bounce -> kick@6:84 [0.20+0.50*density]
+                 | ε [rest]
+
+OptKick15_Bounce -> kick@15:76 [0.10+0.40*density]
+                  | ε [rest]
+
+Ghosts_Bounce -> Ghost7_Bounce Ghost9_Bounce
+
+Ghost7_Bounce -> snare@7:35 [0.20+0.50*density]
+               | ε [rest]
+
+Ghost9_Bounce -> snare@9:30 [0.15+0.45*density]
+               | ε [rest]
+
+Hats_Bounce -> Hats16 [0.20+0.60*density]
+             | Hats8_Bounce [rest]
+
+Hats8_Bounce -> grid8 hhc@0:100 hhc@2:74 hhc@4:98 hhc@6:74 hhc@8:100 hhc@10:74 hhc@12:98 hhc@14:78
+
+# Fill: keeps kick@0, kick@3, snare@4, kick@10
+Fill_Bounce -> kick@0:120 kick@3:96 snare@4:118 kick@10:106 FillHats_Bounce FillTail_Bounce
+
+FillHats_Bounce -> FillHats16 [0.20+0.60*density]
+                 | FillHats8 [rest]
+
+FillTail_Bounce -> TailKickSnare [0.40]
+                 | TailRoll      [0.30]
+                 | TailStutter   [rest]
+
+
+# =====================================================================
+#  Shared hi-hat patterns
+#  Accents: quarter notes > 8th offbeats > 16th "e"/"a".
+# =====================================================================
+
+Hats16 -> grid16 hhc@0:98 hhc@1:48 hhc@2:74 hhc@3:52 hhc@4:96 hhc@5:48 hhc@6:74 hhc@7:52 hhc@8:98 hhc@9:48 hhc@10:74 hhc@11:52 hhc@12:96 hhc@13:48 hhc@14:74 hhc@15:55
+
+# Fill hats stop after step 11 to leave room for the tail
+FillHats8  -> grid8 hhc@0:96 hhc@2:70 hhc@4:94 hhc@6:70 hhc@8:96 hhc@10:70
+
+FillHats16 -> grid16 hhc@0:98 hhc@1:48 hhc@2:74 hhc@3:52 hhc@4:96 hhc@5:48 hhc@6:74 hhc@7:52 hhc@8:98 hhc@9:48 hhc@10:74 hhc@11:52
+
+
+# =====================================================================
+#  Fill tails (steps 12-15)
+# =====================================================================
+
+# 16th snare roll, crescendo (keeps snare@12)
+TailRoll -> snare@12:100 snare@13:84 snare@14:96 snare@15:112
+
+# Kick/snare call-and-response (keeps snare@12)
+TailKickSnare -> snare@12:116 kick@13:92 snare@14:104 kick@15:96
+
+# Stutter: backbeat then two quick snares (keeps snare@12)
+TailStutter -> snare@12:116 snare@14:92 snare@15:108
+
+# Rim build that replaces the snare@12 backbeat
+TailRimBuild -> rim@12:70 rim@13:80 snare@14:100 snare@15:120
+
+# Backbeat plus an open hat lift into the next bar (keeps snare@12)
+TailOpenLift -> snare@12:118 kick@14:90 hho@14:92
+
+
+# =====================================================================
+#  Humanization
+#  HumV: velocity offset. HumT: timing offset in ticks (120 = one 16th),
+#  skewed slightly late for the laid-back boom bap feel.
+# =====================================================================
+
+HumV -> dv+0  [0.30]
+      | dv+3  [0.17]
+      | dv-3  [0.17]
+      | dv+6  [0.10]
+      | dv-6  [0.10]
+      | dv+10 [0.06]
+      | dv-10 [rest]
+
+HumT -> dt+0  [0.30]
+      | dt+3  [0.20]
+      | dt+6  [0.15]
+      | dt-3  [0.15]
+      | dt+10 [0.10]
+      | dt-6  [rest]
+
+
+# =====================================================================
+#  Bass
+#  BassFirst: first note of the bar (root-heavy).
+#  BassDeg: following notes (root > fifth > others).
+# =====================================================================
+
+BassFirst -> deg1 [0.80]
+           | deg5 [0.12]
+           | deg4 [rest]
+
+BassDeg -> deg1 [0.35]
+         | deg5 [0.20]
+         | deg3
+         | deg4
+         | deg7

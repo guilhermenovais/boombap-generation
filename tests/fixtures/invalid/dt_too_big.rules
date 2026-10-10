@@ -1,0 +1,46 @@
+# Tabela sintética mínima, só para testes de formato e invariantes.
+# Não tem pretensão musical (a tabela real é src/boombap/data/boombap.rules).
+
+@grooves = A B C
+@fill_end = 0.4 + 0.5*fills    # comentário de fim de linha
+@fill_mid = 0.1*fills
+@intro_bars = 4:0.5 8:0.5
+@outro_bars = 4:0.5 8:0.5
+@body_share = 0.3 0.4 0.3
+@body_sigma = 0.1
+@block_size = 4:0.5 8:0.5
+@crash_section = 0.5
+@crash_intro = 0.5
+@crash_after_fill = min(1, 0.25 + 0.5*max(0, fills))
+
+Groove_A -> kick@0:100 snare@4:100 kick@10:90 snare@12:100 Opt_A Hats
+Groove_B -> kick@0:100 snare@4:100 kick@8:90 snare@12:100 Ghost Hats
+Groove_C -> kick@0:100 kick@6:90 snare@4:100 snare@12:100 Hats8
+
+Opt_A -> kick@7:80 [0.2 + 0.6*density]
+       | ε [rest]
+
+Ghost -> snare@7:30 [(density)]
+       | ε [rest]
+
+Hats -> Hats8 | Hats16
+
+Hats8 -> grid8 hhc@0:80 hhc@2:60 hhc@4:80 hhc@6:60 hhc@8:80 hhc@10:60 hhc@12:80 hho@14:60
+Hats16 -> grid16 hhc@0:80 hhc@1:40 hhc@2:60 hhc@3:40 hhc@4:80 hhc@5:40 hhc@6:60 hhc@7:40 hhc@8:80 hhc@9:40 hhc@10:60 hhc@11:40 hhc@12:80 hhc@13:40 hhc@14:60 hhc@15:40
+
+Fill_A -> kick@0:100 snare@4:100 Hats8 Tail
+Fill_B -> kick@0:100 snare@4:100 rim@6:50 Hats8 Tail
+Fill_C -> kick@0:100 snare@4:100 Hats16 Tail
+
+Tail -> snare@12:90 snare@14:100 [0.5]
+      | snare@13:90
+      | snare@15:100
+
+HumV -> dv-2 | dv+0 | dv+2
+HumT -> dt-1 [0.2]
+      | dt+0 [0.3]
+      | dt+11 [rest]    # ERR
+
+BassFirst -> deg1 [0.8]
+           | deg5 [rest]
+BassDeg -> deg1 | deg3 | deg4 | deg5 | deg7

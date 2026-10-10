@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boombap"
+dynamic = ["version"]
+description = "Gerador de batidas boom bap por gramática probabilística livre de contexto"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["mido>=1.3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "jsonschema>=4"]
+
+[project.scripts]
+boombap = "boombap.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "boombap.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+boombap = ["data/*.rules"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
